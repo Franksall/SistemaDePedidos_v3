@@ -69,13 +69,22 @@ Este punto es crítico para que `ms-pedidos` pueda consumir `ms-productos` dentr
 
 ## 1. 🧩 Stack Tecnológico Central
 
-### | Componente | Tecnología | Relevancia en v3 (K8s) |
+###
 
-|--------------|------------|-------------------------|
-| **Arquitectura** | Microservicios Reactivos | Uso de **Spring WebFlux** y **Spring Data R2DBC** para operaciones no bloqueantes y alto rendimiento. |
-| **Comunicación** | WebClient | `ms-pedidos` consume `ms-productos` para validar stock. |
-| **Base de Datos** | PostgreSQL + R2DBC | Control total del esquema (tablas + SP). Sin auto-creación. |
-| **Configuración Centralizada** | Spring Cloud Config | El `ms-config-server` carga `.yml` desde `config-repo`. |
+## 1. 🧩 Stack Tecnológico Central
+
+| **Componente**                 | **Tecnología**           | **Relevancia en v3 (K8s)**                                                                            |
+| ------------------------------ | ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| **Arquitectura**               | Microservicios Reactivos | Uso de **Spring WebFlux** y **Spring Data R2DBC** para operaciones no bloqueantes y alto rendimiento. |
+| **Comunicación**               | WebClient                | `ms-pedidos` consume `ms-productos` para validar stock.                                               |
+| **Base de Datos**              | PostgreSQL + R2DBC       | Control total del esquema (tablas + SP). **R2DBC no crea esquema automáticamente**.                   |
+| **Configuración Centralizada** | Spring Cloud Config      | `ms-config-server` carga `.yml` desde `config-repo`.                                                  |
+| (K8s)                          |                          |                                                                                                       |
+| --------------                 | ------------             | -------------------------                                                                             |
+| **Arquitectura**               | Microservicios Reactivos | Uso de **Spring WebFlux** y **Spring Data R2DBC** para operaciones no bloqueantes y alto rendimiento. |
+| **Comunicación**               | WebClient                | `ms-pedidos` consume `ms-productos` para validar stock.                                               |
+| **Base de Datos**              | PostgreSQL + R2DBC       | Control total del esquema (tablas + SP). Sin auto-creación.                                           |
+| **Configuración Centralizada** | Spring Cloud Config      | El `ms-config-server` carga `.yml` desde `config-repo`.                                               |
 
 ---
 
@@ -123,7 +132,7 @@ El servicio **cliente** es `ms-pedidos`, por lo que su configuración debe ser e
   url: http://ms-productos:8081
 ```
 
-Usa el **SistemaDePedidos** de Kubernetes.
+Usa el **nombre del Service** de Kubernetes.
 
 ---
 
@@ -183,3 +192,18 @@ POST /api/pedidos
 
 ---
 
+## ✅ Conclusión
+
+Este README centraliza lo esencial para que tu **Sistema de Pedidos v3** funcione correctamente en entornos locales y Kubernetes. La clave está en:
+
+* WebFlux + R2DBC
+* SP obligatorios
+* Configuración centralizada
+* Interacción WebClient entre ms-pedidos y ms-productos
+
+Si quieres, puedo añadir:
+✔️ Diagramas de arquitectura (ASCII o imagen)
+✔️ Scripts SQL completos
+✔️ Ejemplos de Docker Compose
+✔️ Sección de despliegue en Kubernetes
+✔️ Pruebas con WebTestClient

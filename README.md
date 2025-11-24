@@ -67,9 +67,6 @@ Este punto es crítico para que `ms-pedidos` pueda consumir `ms-productos` dentr
 
 ---
 
-## 1. 🧩 Stack Tecnológico Central
-
-###
 
 ## 1. 🧩 Stack Tecnológico Central
 
@@ -79,8 +76,6 @@ Este punto es crítico para que `ms-pedidos` pueda consumir `ms-productos` dentr
 | **Comunicación**               | WebClient                | `ms-pedidos` consume `ms-productos` para validar stock.                                               |
 | **Base de Datos**              | PostgreSQL + R2DBC       | Control total del esquema (tablas + SP). **R2DBC no crea esquema automáticamente**.                   |
 | **Configuración Centralizada** | Spring Cloud Config      | `ms-config-server` carga `.yml` desde `config-repo`.                                                  |
-| (K8s)                          |                          |                                                                                                       |
-| --------------                 | ------------             | -------------------------                                                                             |
 | **Arquitectura**               | Microservicios Reactivos | Uso de **Spring WebFlux** y **Spring Data R2DBC** para operaciones no bloqueantes y alto rendimiento. |
 | **Comunicación**               | WebClient                | `ms-pedidos` consume `ms-productos` para validar stock.                                               |
 | **Base de Datos**              | PostgreSQL + R2DBC       | Control total del esquema (tablas + SP). Sin auto-creación.                                           |

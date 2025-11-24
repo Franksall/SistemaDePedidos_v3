@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-script
+  namespace: sistema-pedidos 	
+data:
+  init.sql: |
+    /* =============================
+       SCRIPT AUTOMATIZADO PARA K8S 
+       ============================== */
+
+    /* --- Tablas para MS-PRODUCTOS --- */
+    CREATE TABLE IF NOT EXISTS productos (
+        id BIGSERIAL PRIMARY KEY,
+        nombre VARCHAR(255),
+        descripcion TEXT,
+        precio NUMERIC(10, 2),
+        stock INTEGER,
+        activo BOOLEAN,
+        fecha_creacion TIMESTAMP
+    );
+
+    /* --- Tablas para MS-PEDIDOS --- */
+    CREATE TABLE IF NOT EXISTS pedidos (
+        id BIGSERIAL PRIMARY KEY,
+        cliente VARCHAR(255),
+        fecha TIMESTAMP,
+        total NUMERIC(10, 2),
+        estado VARCHAR(50)
+    );
+
+    CREATE TABLE IF NOT EXISTS detalle_pedidos (
+        id BIGSERIAL PRIMARY KEY,
+        pedido_id BIGINT REFERENCES pedidos(id),
+        producto_id BIGINT,
+        cantidad INTEGER,
+        precio_unitario NUMERIC(10, 2)
+    );
+
+    /* --- Funciones para MS-PRODUCTOS --- */
+    CREATE OR REPLACE FUNCTION actualizar_stock(
+        p_producto_id BIGINT,
+        p_cantidad INTEGER
+    ) RETURNS VOID AS $$
+    BEGIN
+        UPDATE productos 
+        SET stock = stock - p_cantidad
+        WHERE id = p_producto_id;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION productos_bajo_stock(
+        p_minimo INTEGER
+    ) RETURNS TABLE(
+        id BIGINT,
+        nombre VARCHAR,
+        stock INTEGER
+    ) AS $$
+    BEGIN
+        RETURN QUERY
+        SELECT p.id, p.nombre, p.stock
+        FROM productos p
+        WHERE p.stock < p_minimo AND p.activo = true;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    /* --- Datos de Prueba para MS-PRODUCTOS --- */
+    INSERT INTO productos (nombre, descripcion, precio, stock, activo, fecha_creacion)
+    VALUES 
+    ('Laptop Dell (K8s)', 'Laptop i7 16GB RAM', 1200.00, 10, true, NOW())
+    ON CONFLICT (id) DO UPDATE SET nombre = EXCLUDED.nombre, descripcion = EXCLUDED.descripcion, precio = EXCLUDED.precio, stock = EXCLUDED.stock;
+
+    INSERT INTO productos (nombre, descripcion, precio, stock, activo, fecha_creacion)
+    VALUES 
+    ('Mouse Logitech (K8s)', 'Mouse inalámbrico', 25.00, 50, true, NOW())
+    ON CONFLICT (id) DO UPDATE SET nombre = EXCLUDED.nombre, descripcion = EXCLUDED.descripcion, precio = EXCLUDED.precio, stock = EXCLUDED.stock;
+
+    INSERT INTO productos (nombre, descripcion, precio, stock, activo, fecha_creacion)
+    VALUES 
+    ('Teclado Mecánico (K8s)', 'Teclado RGB', 80.00, 30, true, NOW())
+    ON CONFLICT (id) DO UPDATE SET nombre = EXCLUDED.nombre, descripcion = EXCLUDED.descripcion, precio = EXCLUDED.precio, stock = EXCLUDED.stock;
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: sistema-pedidos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-db
+  namespace: sistema-pedidos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-db
+  template:
+    metadata:
+      labels:
+        app: postgres-db
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:14-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: sistema_pedidos_db
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          value: postgres
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: init-script
+          mountPath: /docker-entrypoint-initdb.d
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+      - name: init-script
+        configMap:
+          name: postgres-init-script
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db  # E jdbc:postgresql://postgres-db:5432/
+  namespace: sistema-pedidos
+spec:
+  selector:
+    app: postgres-db
+  ports:
+    - port: 5432
+      targetPort: 5432

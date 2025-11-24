@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ms-config-server
+  namespace: sistema-pedidos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ms-config-server
+  template:
+    metadata:
+      labels:
+        app: ms-config-server
+    spec:
+      containers:
+        - name: ms-config-server
+          image: ms-config-server:latest
+          imagePullPolicy: Never  
+          ports:
+            - containerPort: 8888
+          env:
+            
+            - name: SPRING_PROFILES_ACTIVE
+              value: "native"
+            - name: SPRING_CLOUD_CONFIG_SERVER_NATIVE_SEARCH_LOCATIONS
+              value: "file:///etc/config-repo"
+          volumeMounts:
+            
+            - name: config-volume
+              mountPath: /etc/config-repo
+      volumes:
+        - name: config-volume
+          configMap:
+            name: config-repo 
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ms-config-server
+  namespace: sistema-pedidos
+spec:
+  selector:
+    app: ms-config-server
+  ports:
+    - port: 8888
+      targetPort: 8888

@@ -1,0 +1,14 @@
+expose:
+  type: ingress
+  ingress:
+    # Dominio ficticio Minikube
+    hosts:
+      core: "harbor.local.test"
+  tls:
+    enabled: true
+    secretName: harbor-tls-secret
+persistence:
+  enabled: true
+externalURL: "https://harbor.local.test"
+
+harborAdminPassword: password321

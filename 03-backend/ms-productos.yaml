@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ms-productos
+  namespace: sistema-pedidos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ms-productos
+  template:
+    metadata:
+      labels:
+        app: ms-productos
+    spec:
+      containers:
+        - name: ms-productos
+          image: ms-productos:latest
+          imagePullPolicy: Never  # use imagen local
+          ports:
+            - containerPort: 8081
+          # === PROBES IMPORTANTES ===
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 12
+
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          env:
+            # 1. Conexión Config Server
+            - name: SPRING_CONFIG_IMPORT
+              value: "optional:configserver:http://ms-config-server:8888"
+            
+            # 2. Sobrescrib la BD para que no busque 'localhost'
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres-db:5432/sistema_pedidos_db"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "postgres"
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: "postgres"
+
+            # 3.  Apagamos Eureka aquí mismo
+            - name: EUREKA_CLIENT_ENABLED
+              value: "false"
+            - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+              value: "false"
+            - name: EUREKA_CLIENT_FETCH_REGISTRY
+              value: "false"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ms-productos # para que pedidos lo encuentre
+  namespace: sistema-pedidos
+spec:
+  selector:
+    app: ms-productos
+  ports:
+    - port: 8081
+      targetPort: 8081

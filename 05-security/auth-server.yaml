@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ms-authorization-server
+  namespace: sistema-pedidos
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ms-authorization-server
+  template:
+    metadata:
+      labels:
+        app: ms-authorization-server
+    spec:
+      containers:
+        - name: ms-authorization-server
+          image: ms-authorization-server:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 9000
+          env:
+            # Conexión al cerebro
+            - name: SPRING_CONFIG_IMPORT
+              value: "optional:configserver:http://ms-config-server:8888"
+            # Apagar Eureka
+            - name: EUREKA_CLIENT_ENABLED
+              value: "false"
+            - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+              value: "false"
+            - name: EUREKA_CLIENT_FETCH_REGISTRY
+              value: "false"
+            
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ms-authorization-server #  http://ms-authorization-server:9000
+  namespace: sistema-pedidos
+spec:
+  selector:
+    app: ms-authorization-server
+  ports:
+    - port: 9000
+      targetPort: 9000

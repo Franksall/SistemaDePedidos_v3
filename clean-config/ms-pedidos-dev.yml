@@ -1,0 +1,56 @@
+server:
+  port: 8082
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://postgres-db:5432/sistema_pedidos_db
+    #url: r2dbc:postgresql://localhost:5432/db_pedidos_dev
+    username: postgres
+    password: postgres 
+    pool:
+      enabled: true
+  # R2DBC no tiene ddl-auto, pero se puede inicializar la BD con un script
+  sql:
+    init:
+      mode: always
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://ms-authorization-server:9000
+      client:
+        registration:
+          # El nombre 'gateway-client-registration' es solo un ID interno
+          gateway-client-registration: 
+            provider: our-auth-server # Un nombre para el proveedor de abajo
+            client-id: gateway-client
+            client-secret: secret
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          our-auth-server:
+            authorization-uri: http://gateway-service:8080/oauth2/authorize
+            token-uri: http://gateway-service:8080/oauth2/token
+            jwk-set-uri: http://gateway-service:8080/oauth2/jwks
+
+# --- URL para comunicarse con ms-productos ---
+ms-productos:
+  url: http://ms-productos:8081
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://registry-service:8099/eureka/
+      #defaultZone: http://localhost:8099/eureka/
+  
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      
+
+      productos-cb: 
+        registerHealthIndicator: true
+        slidingWindowType: COUNT_BASED   #  N° de llamadas
+        slidingWindowSize: 10            # Revisa las últimas 10 llamadas
+        failureRateThreshold: 50         # Si 5 de esas 10 fallan (50%), se "abre"
+        waitDurationInOpenState: 10s     # "abierto" por 10 segundos
+        permittedNumberOfCallsInHalfOpenState: 3 # En 10s, deja pasar 3 llamadas de prueba

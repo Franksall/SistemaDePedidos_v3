@@ -1,0 +1,28 @@
+server:
+  port: 8081
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://postgres-db:5432/sistema_pedidos_db
+    #url: r2dbc:postgresql://localhost:5432/db_productos_dev
+    username: postgres
+    password: postgres 
+    pool:
+      enabled: true
+  # JPA 
+  jpa:
+    show-sql: true 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://ms-authorization-server:9000
+
+logging:
+  level:
+    root: INFO
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://registry-service:8099/eureka/
+      #defaultZone: http://localhost:8099/eureka/
+  

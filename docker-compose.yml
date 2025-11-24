@@ -1,0 +1,247 @@
+networks:
+  pedidos-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  prometheus_data: {} 
+  grafana_data: {}    
+  loki_data: {}       
+  tempo_data: {} 
+  promtail_data: {}     
+
+services:
+  #  Base de Datos PostgreSQL
+  postgres-db:
+    image: postgres:14-alpine
+    container_name: postgres-db
+    restart: always
+    ports:
+      - "5432:5432"
+    networks:
+      - pedidos-net
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres   
+      POSTGRES_DB: sistema_pedidos_db
+    volumes:
+      - ./database.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sistema_pedidos_db"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  #  Config Server
+  ms-config-server:
+    build: ./ms-config-server
+    container_name: ms-config-server
+    ports:
+      - "8888:8888"
+    networks:
+      - pedidos-net
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  #  Eureka Registry
+  registry-service:
+    build: ./registry-service
+    container_name: registry-service
+    ports:
+      - "8099:8099"
+    networks:
+      - pedidos-net
+    depends_on:
+      ms-config-server:
+        condition: service_healthy
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8099/actuator/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    
+
+  # ms-authorization-server
+  ms-authorization-server:
+    build:
+      context: ./ms-authorization-server 
+    container_name: ms-authorization-server
+    ports:
+      - "9000:9000" 
+    networks:
+      - pedidos-net 
+    depends_on:
+      ms-config-server:
+        condition: service_healthy 
+      registry-service:
+        condition: service_healthy 
+    environment: 
+      - OTEL_SERVICE_NAME=ms-authorization-server
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+  # 2. damos la dirección gRPC 
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+  # 3. OpcionalLe decimos que use gRPC
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  #  Microservicio de Productos
+  ms-productos:
+    build: ./ms-productos
+    container_name: ms-productos
+    ports:
+      - "8081:8081"
+    networks:
+      - pedidos-net
+    depends_on:
+      ms-config-server:
+        condition: service_healthy
+      registry-service:
+        condition: service_healthy
+    environment: 
+      - OTEL_SERVICE_NAME=ms-productos
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+  # 2. damos la dirección gRPC 
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+  # 3. OpcionalLe decimos que use gRPC
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+
+  #  Microservicio de Pedidos
+  ms-pedidos:
+    build: ./ms-pedidos
+    container_name: ms-pedidos
+    ports:
+      - "8082:8082"
+    networks:
+      - pedidos-net
+    depends_on:
+      ms-config-server:
+        condition: service_healthy
+      registry-service:
+        condition: service_healthy
+    environment: 
+      - OTEL_SERVICE_NAME=ms-pedidos
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+  # 2. damos la dirección gRPC 
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+  # 3. OpcionalLe decimos que use gRPC
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+
+  #  Gateway
+  gateway-service:
+    build: ./gateway-service
+    container_name: gateway-service
+    ports:
+      - "8080:8080"
+    networks:
+      - pedidos-net
+    depends_on:
+      ms-config-server:
+        condition: service_healthy
+      registry-service:
+        condition: service_healthy
+      ms-pedidos:
+        condition: service_started
+      ms-productos:
+        condition: service_started
+      ms-authorization-server:
+        condition: service_healthy
+    environment: 
+      - OTEL_SERVICE_NAME=gateway-service
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+  # 2. damos la dirección gRPC 
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+  # 3. OpcionalLe decimos que use gRPC
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+
+  # --- 5 SERVICIOS NUEVOS DE OBSERVABILIDAD ---
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    volumes:
+      - ./monitoring-config/otel-collector.yml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317" # Puerto OTLP gRPC (trazas, métricas)
+      - "4318:4318" # Puerto OTLP HTTP (logs)
+      - "8889:8889" # Puerto para Prometheus
+    networks:
+      - pedidos-net
+    depends_on:
+      - loki
+      - tempo
+      - prometheus
+#  grafana, loki, tempo
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./monitoring-config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - pedidos-net
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki_data:/loki
+    networks:
+      - pedidos-net
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - tempo_data:/tmp/tempo
+    ports:
+      - "3200:3200" # UI de Tempo
+    networks:
+      - pedidos-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring-config/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+    ports:
+      - "3000:3000"
+    networks:
+      - pedidos-net
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - ./monitoring-config/promtail-config.yml:/etc/promtail/config.yml
+      - //var/run/docker.sock:/var/run/docker.sock 
+      - promtail_data:/tmp
+    networks:
+      - pedidos-net
+    depends_on:
+      - loki

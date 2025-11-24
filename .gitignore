@@ -1,0 +1,14 @@
+# Directorios de Microservicios que tendrán su propio repositorio de GitHub:
+/ms-authorization-server/
+/ms-config-server/
+/ms-pedidos/
+/ms-productos/
+/gateway-service/
+/registry-service/
+
+# Archivos de compilación y temporales
+*.jar
+*.war
+/build/
+.gradle/
+.idea/

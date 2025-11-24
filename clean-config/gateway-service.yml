@@ -1,0 +1,58 @@
+server:
+  port: 8080
+
+spring:
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: false 
+      
+      routes:
+        # --- NEGOCIO ---
+        - id: ms-productos-route
+          uri: http://ms-productos:8081
+          predicates:
+            - Path=/api/productos/**
+          filters:
+            - PreserveHostHeader
+
+        - id: ms-pedidos-route
+          uri: http://ms-pedidos:8082
+          predicates:
+            - Path=/api/pedidos/**
+          filters:
+            - PreserveHostHeader
+
+        #  SEGURIDAD 
+        
+        #  Todo OAuth2 (Token, Authorize, JWKs)
+        - id: auth-oauth
+          uri: http://ms-authorization-server:9000
+          predicates:
+            - Path=/oauth2/**
+          filters:
+            - PreserveHostHeader
+
+        #  Login
+        - id: auth-login
+          uri: http://ms-authorization-server:9000
+          predicates:
+            - Path=/login/**
+          filters:
+            - PreserveHostHeader
+
+        #  Well-Known (validación)
+        - id: auth-wellknown
+          uri: http://ms-authorization-server:9000
+          predicates:
+            - Path=/.well-known/**
+          filters:
+            - PreserveHostHeader
+
+  # 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://ms-authorization-server:9000

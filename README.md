@@ -1,339 +1,185 @@
-#  Práctica Integral: Sistema de Gestión de Pedidos con Microservicios
+# 🏗️ Sistema de Pedidos v3 — Fundamentos Técnicos
 
-##  Objetivo
-
-Desarrollar un **sistema de gestión de pedidos completo** utilizando una **arquitectura de microservicios reactiva**, implementando:
-
-- **Spring Boot**
-- **Spring WebFlux**
-- **Spring Data R2DBC**
-- **Spring Cloud Config**
-
-El sistema se compone de **3 microservicios**:
-
-1.  **ms-config-server** → Servidor de configuración centralizada  
-2.  **ms-productos** → API Reactiva (Gradle + Procedimientos Almacenados)  
-3.  **ms-pedidos** → API Reactiva (Gradle + Comunicación WebClient)
+Este documento resume los principios esenciales del **Sistema de Pedidos v3**, orientado a una arquitectura moderna basada en **microservicios reactivos**, **Spring WebFlux**, **PostgreSQL R2DBC**, y preparado para su despliegue en **Kubernetes**.
 
 ---
 
-##  1. Tecnologías Utilizadas
+## 1. 🧩 Stack Tecnológico Central
 
-| Componente | Tecnología |
-|-------------|-------------|
-| **Proyecto** | Gradle (Groovy) |
-| **Lenguaje** | Java 17+ |
-| **Framework principal** | Spring Boot v3.x (ej. 3.5.7) |
-| **Stack Reactivo** | Spring WebFlux + Spring Data R2DBC |
-| **Base de Datos** | PostgreSQL |
-| **Comunicación entre servicios** | WebClient (en lugar de Feign) |
-| **Configuración centralizada** | Spring Cloud Config Server |
+## 0. 🗂️ Estructura de Archivos del Entorno Kubernetes (v3)
 
+Todo tu despliegue en **Minikube/Kubernetes** se organiza en módulos claros que representan infraestructura, configuración centralizada, microservicios y parámetros externos cargados por el Config Server.
 
 ---
 
-##  2. Configuración de Bases de Datos
+### ### 0.1 **00-infra (Infraestructura Principal)**
 
-Antes de ejecutar los servicios, debes crear las **bases de datos** y **ejecutar los scripts SQL**.
-
-### 2.1 Creación de Bases de Datos
-
-```sql
-CREATE DATABASE db_productos_dev;
-CREATE DATABASE db_productos_qa;
-CREATE DATABASE db_productos_prd;
-
-CREATE DATABASE db_pedidos_dev;
-CREATE DATABASE db_pedidos_qa;
-CREATE DATABASE db_pedidos_prd;
-```
+| Archivo                     | Contenido                          | Propósito                                                                 |
+| --------------------------- | ---------------------------------- | ------------------------------------------------------------------------- |
+| `database/postgres.yaml`    | Deployment + Service de PostgreSQL | Crea la base de datos relacional usada por `ms-productos` y `ms-pedidos`. |
+| `harbor/harbor-values.yaml` | Configuración Helm para Harbor     | Define dominio, contraseñas y acceso por Ingress (`harbor.local.test`).   |
 
 ---
 
-### 2.2 Creación de Tablas (R2DBC no usa ddl-auto)
+### ### 0.2 **01-config (Configuración Central)**
 
-####  Script para `db_productos_*`
-
-```sql
-CREATE TABLE productos (
-    id BIGSERIAL PRIMARY KEY,
-    nombre VARCHAR(255),
-    descripcion TEXT,
-    precio NUMERIC(10, 2),
-    stock INTEGER,
-    activo BOOLEAN,
-    fecha_creacion TIMESTAMP
-);
-```
-
-#### Script para `db_pedidos_*`
-
-```sql
-CREATE TABLE pedidos (
-    id BIGSERIAL PRIMARY KEY,
-    cliente VARCHAR(255),
-    fecha TIMESTAMP,
-    total NUMERIC(10, 2),
-    estado VARCHAR(50)
-);
-
-CREATE TABLE detalle_pedidos (
-    id BIGSERIAL PRIMARY KEY,
-    pedido_id BIGINT REFERENCES pedidos(id),
-    producto_id BIGINT,
-    cantidad INTEGER,
-    precio_unitario NUMERIC(10, 2)
-);
-```
+| Archivo              | Contenido                              | Propósito                                                                            |
+| -------------------- | -------------------------------------- | ------------------------------------------------------------------------------------ |
+| `config-server.yaml` | Deployment + Service del Config Server | Permite que tus microservicios obtengan configuración desde el `config-repo` de Git. |
 
 ---
 
-### 2.3 Creación de Procedimientos Almacenados (SP)
+### ### 0.3 **03-backend, 04-gateway, 05-security (Microservicios)**
 
-####  Función 1: `actualizar_stock`
-
-```sql
-CREATE OR REPLACE FUNCTION actualizar_stock(
-    p_producto_id BIGINT,
-    p_cantidad INTEGER
-) RETURNS VOID AS $$
-BEGIN
-    UPDATE productos 
-    SET stock = stock - p_cantidad
-    WHERE id = p_producto_id;
-END;
-$$ LANGUAGE plpgsql;
-```
-
-####  Función 2: `productos_bajo_stock`
-
-```sql
-CREATE OR REPLACE FUNCTION productos_bajo_stock(
-    p_minimo INTEGER
-) RETURNS TABLE(
-    id BIGINT,
-    nombre VARCHAR,
-    stock INTEGER
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT p.id, p.nombre, p.stock
-    FROM productos p
-    WHERE p.stock < p_minimo AND p.activo = true;
-END;
-$$ LANGUAGE plpgsql;
-```
+| Archivo                        | Microservicio           | Componentes                      | Función                                                                |
+| ------------------------------ | ----------------------- | -------------------------------- | ---------------------------------------------------------------------- |
+| `03-backend/ms-productos.yaml` | ms-productos            | Deployment + Service (ClusterIP) | API reactiva de productos. Acceso interno: `http://ms-productos:8081`. |
+| `03-backend/ms-pedidos.yaml`   | ms-pedidos              | Deployment + Service (ClusterIP) | API de pedidos. Usa WebClient para comunicarse con ms-productos.       |
+| `05-security/auth-server.yaml` | ms-authorization-server | Deployment + Service             | Emisión de tokens OAuth 2.0.                                           |
+| `04-gateway/gateway.yaml`      | gateway-service         | Deployment + Service             | API Gateway, entrada principal del sistema.                            |
+| `04-gateway/ingress.yaml`      | Ingress                 | Reglas de enrutamiento           | Mapea rutas externas → Services internos.                              |
 
 ---
 
-##  3. Configuración del `config-repo`
+### ### 0.4 **clean-config (Configuración del Config Server)**
 
-El **ms-config-server** obtiene la configuración desde un **repositorio Git local** llamado `config-repo`.
+Estos archivos son descargados dinámicamente por el Config Server desde tu `config-repo`.
 
-### Pasos de configuración
+Incluyen:
 
-1. Navegar a la carpeta del repositorio local:
-  
-  ```bash
-   cd ruta/a/tu/SistemaDePedidos/config-repo
-  ```
+* `gateway-service.yml`
+* `ms-authorization-server.yml`
+* `ms-pedidos-dev.yml`
+* `ms-productos-dev.yml`
 
-2. Inicializar el repositorio Git:
+**Función clave:**
 
-   ```bash
-   git init
-   ```
-
-3. Agregar los archivos `.yml` (dev, qa, prd) y realizar el commit inicial:
-
-  ```bash
-   git add .
-   git commit -m "Commit inicial de configuraciones"
-   ```
-
----
-
-###  Ejemplo: `ms-productos-dev.yml`
+* Definir URLs de base de datos (R2DBC)
+* Configurar puertos
+* Configurar comunicación interna, ejemplo:
 
 ```yaml
-server:
-  port: 8081
-
-spring:
-  r2dbc:
-    url: r2dbc:postgresql://localhost:5432/db_productos_dev
-    username: postgres
-    password: [TU_PASSWORD_POSTGRES]
-    pool:
-      enabled: true
-  jpa:
-    show-sql: true
-```
-
----
-
-###  Ejemplo: `ms-pedidos-dev.yml`
-
-```yaml
-server:
-  port: 8082
-
-spring:
-  r2dbc:
-    url: r2dbc:postgresql://localhost:5432/db_pedidos_dev
-    username: postgres
-    password: [TU_PASSWORD_POSTGRES]
-    pool:
-      enabled: true
-  sql:
-    init:
-      mode: always 
-
 ms-productos:
+  url: http://ms-productos:8081
+```
+
+Este punto es crítico para que `ms-pedidos` pueda consumir `ms-productos` dentro de Kubernetes.
+
+---
+
+## 1. 🧩 Stack Tecnológico Central
+
+### | Componente | Tecnología | Relevancia en v3 (K8s) |
+
+|--------------|------------|-------------------------|
+| **Arquitectura** | Microservicios Reactivos | Uso de **Spring WebFlux** y **Spring Data R2DBC** para operaciones no bloqueantes y alto rendimiento. |
+| **Comunicación** | WebClient | `ms-pedidos` consume `ms-productos` para validar stock. |
+| **Base de Datos** | PostgreSQL + R2DBC | Control total del esquema (tablas + SP). Sin auto-creación. |
+| **Configuración Centralizada** | Spring Cloud Config | El `ms-config-server` carga `.yml` desde `config-repo`. |
+
+---
+
+## 2. ⚙️ Puntos Críticos de Configuración y Código
+
+### 🛑 2.1 Dependencia de Base de Datos y SQL
+
+R2DBC **no** crea tablas ni ejecuta scripts. Debes inicializar todo manualmente.
+
+### Tablas obligatorias
+
+* `productos`
+* `pedidos`
+* `detalle_pedidos`
+
+### Procedimientos Almacenados (SP) obligatorios
+
+#### **1. actualizar_stock**
+
+Reduce el stock luego de un pedido correcto.
+Se invoca desde `ms-pedidos`.
+
+#### **2. productos_bajo_stock**
+
+Retorna lista de productos con stock mínimo.
+Ejemplo de endpoint: `GET /api/productos/bajo-stock`.
+
+---
+
+## ⚙️ 2.2 Configuración del Microservicio ms-pedidos
+
+El servicio **cliente** es `ms-pedidos`, por lo que su configuración debe ser exacta.
+
+### Archivo: `ms-pedidos-dev.yml` (en config-repo)
+
+#### En local (v1/v2):
+
+```yaml\ms-productos:
   url: http://localhost:8081
 ```
 
->  Las configuraciones de **qa** y **prd** son similares, cambiando solo los **puertos** y las **bases de datos**.
+#### En Kubernetes (v3):
+
+```yaml\ms-productos:
+  url: http://ms-productos:8081
+```
+
+Usa el **SistemaDePedidos** de Kubernetes.
 
 ---
 
-## 4. Ejecución del Sistema
+## 3. 🔄 Flujo de Prueba Funcional (Reactivo)
 
-El orden de ejecución es importante debido a las dependencias entre servicios.
+Este flujo demuestra el correcto funcionamiento del sistema.
 
-### 🪩 Paso 1: Ejecutar **ms-config-server**
+### **1️⃣ Crear un producto**
 
-1. Abrir el proyecto `ms-config-server` en IntelliJ.  
-2. Ejecutar `MsConfigServerApplication.java`.  
-3. Verificar en navegador:  
-   ```
-   http://localhost:8888/ms-productos/dev
-   ```
-   → Debería mostrar el contenido YAML del entorno `dev`.
-
----
-
-###  Paso 2: Ejecutar **ms-productos**
-
-1. Abrir el proyecto `ms-productos`.  
-2. Ejecutar `MsProductosApplication.java`.  
-3. Verificar en consola: puerto `8081` (configurado por el Config Server).
-
----
-
-###  Paso 3: Ejecutar **ms-pedidos**
-
-1. Abrir el proyecto `ms-pedidos`.  
-2. Ejecutar `MsPedidosApplication.java`.  
-3. Verificar en consola: puerto `8082`.
-
----
-
-##  5. Pruebas y Endpoints (Swagger)
-
-| Servicio | URL Swagger |
-|-----------|--------------|
-| **ms-productos** | http://localhost:8081/swagger-ui.html |
-| **ms-pedidos** | http://localhost:8082/swagger-ui.html |
-
----
-
-###  Flujo de Prueba Completo
-
-#### 1 Crear Producto
-
-- **Endpoint:** `POST /api/productos`
-- **Ejemplo JSON:**
-
-```json
+```
+POST /api/productos
 {
-  "nombre": "Laptop Dell",
-  "descripcion": "Laptop profesional",
-  "precio": 3500.00,
+  "nombre": "Laptop Gamer",
   "stock": 10,
-  "activo": true
+  "precio": 2500
 }
 ```
 
----
+### **2️⃣ Crear un pedido de 2 unidades**
 
-#### 2 Crear Pedido
-
-- **Endpoint:** `POST /api/pedidos`
-- **Ejemplo JSON:**
-
-```json
+```
+POST /api/pedidos
 {
-  "cliente": "Juan Pérez",
-  "detallePedidos": [
-    {
-      "productoId": 1,
-      "cantidad": 2,
-      "precioUnitario": 3500.00
-    }
-  ]
+  "productoId": 1,
+  "cantidad": 2
 }
 ```
 
- **Resultado:** `201 Created` → Pedido creado correctamente.
+### Acción Interna Automática
+
+* `ms-pedidos` llama a `ms-productos` usando WebClient.
+* Valida stock.
+* Invoca el SP `actualizar_stock`.
+
+### Resultado Esperado
+
+* Stock final: **8**.
 
 ---
 
-#### 3 Verificar Stock
+## ❌ Validación de Stock Insuficiente
 
-- **Endpoint:** `GET /api/productos/1`
-- **Resultado esperado:**  
-  El stock del producto “Laptop Dell” debe bajar de **10 → 8**, demostrando que se ejecutó el SP `actualizar_stock`.
+### Intento:
 
----
-
-#### 4 Validación de Stock Insuficiente
-
-- **Endpoint:** `POST /api/pedidos`
-- **Ejemplo JSON:**
-
-```json
+```
+POST /api/pedidos
 {
-  "cliente": "Juan Pérez",
-  "detallePedidos": [
-    {
-      "productoId": 1,
-      "cantidad": 50
-    }
-  ]
+  "productoId": 1,
+  "cantidad": 50
 }
 ```
 
- **Resultado esperado:**  
-`500 Internal Server Error` con mensaje:  
-> "Stock insuficiente para el producto solicitado."
+### Resultado Esperado
+
+* `500 Internal Server Error`
+* Mensaje claro: **"Stock insuficiente"**.
 
 ---
 
-##  Estructura de Carpetas (Referencia)
-
-```
-SistemaDePedidos/
-│
-├── config-repo/
-│   ├── ms-productos-dev.yml
-│   ├── ms-productos-qa.yml
-│   ├── ms-productos-prd.yml
-│   ├── ms-pedidos-dev.yml
-│   ├── ms-pedidos-qa.yml
-│   └── ms-pedidos-prd.yml
-│
-├── ms-config-server/
-│   └── src/main/java/.../MsConfigServerApplication.java
-│
-├── ms-productos/
-│   └── src/main/java/.../MsProductosApplication.java
-│
-└── ms-pedidos/
-    └── src/main/java/.../MsPedidosApplication.java
-```
-
----
-
-
----
